@@ -1,0 +1,52 @@
+; I2C controller: START, then every byte in the TX FIFO (first = address<<1|0),
+; ACK check after each byte, STOP when the FIFO is empty. Open-drain on both
+; pins, clock stretching honoured. FLAG = NACK seen; the lane then waits in
+; IDLE until the host flushes the TX FIFO and clears FLAG.
+.clock  50e6
+.timer  A = half(100e3)          ; SCL high / low time at 100 kHz
+.timer  B = quarter(100e3)       ; setup / hold spacing inside the low time
+.count  8
+.shift  width=8 msb_first=1 in=p1
+.pin    p0 = SCL
+.pin    p1 = SDA
+
+state INIT
+    ALWAYS          : RELEASE(p0)                         -> INIT2
+state INIT2
+    ALWAYS          : RELEASE(p1)                         -> IDLE
+state IDLE
+    FLAG            :                                     -> IDLE    ; after a NACK: wait for host
+    !TXF_EMPTY & p0 : LOAD_TX, LOW(p1), TIMER_A           -> START_H ; START: SDA falls, SCL high
+state START_H
+    T0              : LOW(p0), COUNT_LOAD, TIMER_B        -> B_SET
+state B_SET
+    T0              : OD(p1), TIMER_B                     -> B_REL   ; data bit on SDA, SCL low
+state B_REL
+    T0              : RELEASE(p0)                         -> B_WAIT
+state B_WAIT
+    p0              : SHIFT_OUT, COUNT_DEC, TIMER_A       -> B_HIGH  ; waits while target stretches SCL
+state B_HIGH
+    T0 & C0         : LOW(p0), TIMER_B                    -> A_SET
+    T0              : LOW(p0), TIMER_B                    -> B_SET
+state A_SET
+    T0              : RELEASE(p1), TIMER_B                -> A_REL   ; let target drive ACK
+state A_REL
+    T0              : RELEASE(p0)                         -> A_WAIT
+state A_WAIT
+    p0              : TIMER_A                             -> A_HIGH
+state A_HIGH
+    T0 & !p1        : LOW(p0), TIMER_B                    -> NEXT    ; ACK
+    T0              : LOW(p0), TIMER_B, SET_FLAG          -> P_LOW   ; NACK
+state NEXT
+    T0 & TXF_EMPTY  : TIMER_B                             -> P_LOW
+    T0              : LOAD_TX, COUNT_LOAD, TIMER_B        -> B_SET
+state P_LOW
+    T0              : LOW(p1), TIMER_B                    -> P_REL   ; SDA low before STOP
+state P_REL
+    T0              : RELEASE(p0)                         -> P_WAIT
+state P_WAIT
+    p0              : TIMER_A                             -> P_SDA   ; STOP setup time
+state P_SDA
+    T0              : RELEASE(p1), TIMER_A                -> FREE    ; STOP: SDA rises, SCL high
+state FREE
+    T0              :                                     -> IDLE    ; bus free time

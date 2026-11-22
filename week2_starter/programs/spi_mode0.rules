@@ -1,0 +1,29 @@
+; SPI controller, mode 0 (CPOL 0, CPHA 0), MSB first, one byte per CS frame.
+; Mode 2 = same program with ".pin p0 = SCK invert". Mode 1/3: swap which
+; half-period rule carries OUT and which carries SHIFT_IN.
+.clock  50e6
+.timer  A = half(1e6)            ; SCK half period for 1 MHz
+.count  8
+.shift  width=8 msb_first=1 in=p2
+.pin    p0 = SCK
+.pin    p1 = MOSI
+.pin    p2 = MISO
+.pin    p3 = CS
+
+state INIT
+    ALWAYS      : HIGH(p3)                                -> INIT2  ; CS idle high
+state INIT2
+    ALWAYS      : LOW(p0)                                 -> IDLE   ; SCK idle low
+state IDLE
+    !TXF_EMPTY  : LOAD_TX, LOW(p3), COUNT_LOAD            -> SETUP  ; CS low
+state SETUP
+    ALWAYS      : OUT(p1), TIMER_A                        -> LOW    ; first bit on MOSI
+state LOW
+    T0          : HIGH(p0), SHIFT_IN, COUNT_DEC, TIMER_A  -> HIGH   ; rising edge: sample MISO
+state HIGH
+    T0 & C0     : LOW(p0), PUSH_RX, TIMER_A               -> DONE   ; 8 bits done
+    T0          : LOW(p0), TIMER_A                        -> NEXT   ; falling edge
+state NEXT
+    ALWAYS      : OUT(p1)                                 -> LOW    ; next bit on MOSI
+state DONE
+    T0          : HIGH(p3)                                -> IDLE   ; CS high after half period

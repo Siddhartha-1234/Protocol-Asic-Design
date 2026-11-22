@@ -1,0 +1,15 @@
+; UART transmitter, 8N1, LSB first. Host pushes bytes into the TX FIFO.
+.clock  50e6
+.timer  A = bit(115200)          ; one bit period
+.count  8
+.shift  width=8 msb_first=0
+.pin    p0 = TX
+
+state IDLE
+    !TXF_EMPTY  : LOAD_TX, LOW(p0), TIMER_A, COUNT_LOAD    -> BIT   ; start bit
+    ALWAYS      : HIGH(p0)                                -> IDLE  ; line idles high
+state BIT
+    T0 & C0     : HIGH(p0), TIMER_A                       -> STOP  ; 8 bits done: stop bit
+    T0          : OUT(p0), SHIFT_OUT, COUNT_DEC, TIMER_A  -> BIT   ; next data bit
+state STOP
+    T0          :                                         -> IDLE

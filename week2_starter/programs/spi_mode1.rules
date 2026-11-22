@@ -1,0 +1,29 @@
+; SPI controller, mode 1 (CPOL 0, CPHA 1), MSB first, one byte per CS frame.
+; Data changes on the leading (rising) edge, is sampled on the trailing edge.
+; Mode 3 = this program with ".pin p0 = SCK invert".
+.clock  50e6
+.timer  A = half(1e6)
+.count  8
+.shift  width=8 msb_first=1 in=p2
+.pin    p0 = SCK
+.pin    p1 = MOSI
+.pin    p2 = MISO
+.pin    p3 = CS
+
+state INIT
+    ALWAYS      : HIGH(p3)                                -> INIT2
+state INIT2
+    ALWAYS      : LOW(p0)                                 -> IDLE
+state IDLE
+    !TXF_EMPTY  : LOAD_TX, LOW(p3), COUNT_LOAD, TIMER_A   -> LOW    ; CS low, wait half period
+state LOW
+    T0          : HIGH(p0), TIMER_A                       -> OUTB   ; leading edge
+state OUTB
+    ALWAYS      : OUT(p1)                                 -> HIGH   ; new bit right after it
+state HIGH
+    T0          : LOW(p0), SHIFT_IN, COUNT_DEC, TIMER_A   -> CHK    ; trailing edge: sample MISO
+state CHK
+    C0          : PUSH_RX                                 -> DONE
+    ALWAYS      :                                         -> LOW
+state DONE
+    T0          : HIGH(p3)                                -> IDLE

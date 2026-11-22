@@ -1,0 +1,19 @@
+; UART receiver, 8N1, LSB first. Bytes land in the RX FIFO; FLAG = framing error.
+.clock  50e6
+.timer  A = bit(115200)          ; one bit period
+.timer  B = half(115200)         ; half a bit: from start edge to mid start bit
+.count  8
+.shift  width=8 msb_first=0 in=p0
+.pin    p0 = RX
+
+state IDLE
+    fall(p0)    : TIMER_B                                 -> START
+state START
+    T0 & p0     :                                         -> IDLE  ; glitch, not a start bit
+    T0          : TIMER_A, COUNT_LOAD                     -> DATA
+state DATA
+    C0          :                                         -> STOP  ; 8 bits in
+    T0          : SHIFT_IN, COUNT_DEC, TIMER_A            -> DATA
+state STOP
+    T0 & p0     : PUSH_RX                                 -> IDLE
+    T0          : SET_FLAG                                -> IDLE  ; framing error
